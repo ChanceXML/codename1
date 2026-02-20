@@ -4,12 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       release_url:
-        description: 'Full GitHub release URL (e.g., https://github.com/HaxeFoundation/hxcpp/releases/tag/4.3.127)'
+        description: 'Full GitHub release ZIP URL (e.g., https://github.com/HaxeFoundation/hxcpp/archive/refs/tags/4.3.127.zip)'
         required: true
-      zip_name:
-        description: 'Name to save the downloaded ZIP as (include .zip)'
-        required: true
-        default: 'source.zip'
       skip_folders:
         description: 'Number of top-level folders to skip inside the ZIP before merging'
         required: true
@@ -22,27 +18,28 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Release ZIP
+      - name: Download ZIP
         run: |
-          echo "Downloading release from: ${{ github.event.inputs.release_url }} as ${{ github.event.inputs.zip_name }}"
-          curl -L -o "${{ github.event.inputs.zip_name }}" "${{ github.event.inputs.release_url }}"
+          ZIP_URL="${{ github.event.inputs.release_url }}"
+          ZIP_NAME="source.zip"
+          echo "Downloading release from: $ZIP_URL"
+          curl -L -o "$ZIP_NAME" "$ZIP_URL"
 
       - name: Validate ZIP
         run: |
-          if ! file "${{ github.event.inputs.zip_name }}" | grep -q 'Zip archive data'; then
+          if ! file "source.zip" | grep -q 'Zip archive data'; then
             echo "ERROR: Downloaded file is not a valid ZIP."
             exit 1
           fi
 
-      - name: Extract ZIP
+      - name: Extract and merge
         run: |
           mkdir temp_extract
-          unzip "${{ github.event.inputs.zip_name }}" -d temp_extract
+          unzip source.zip -d temp_extract
 
-          # Skip folders as requested by the user
           SKIP=${{ github.event.inputs.skip_folders }}
           FOLDER="temp_extract"
           for i in $(seq 1 $SKIP); do
@@ -54,16 +51,14 @@ jobs:
             fi
           done
 
-          # Merge into repo root safely
           shopt -s dotglob
           cp -a "$FOLDER"/* ./
           shopt -u dotglob
 
-          # Cleanup
           rm -rf temp_extract
-          rm "${{ github.event.inputs.zip_name }}"
+          rm source.zip
 
-      - name: Commit & Push
+      - name: Commit & push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
