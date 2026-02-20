@@ -3,8 +3,8 @@ name: GitHub Release Sync
 on:
   workflow_dispatch:
     inputs:
-      release_url:
-        description: 'Full GitHub release ZIP URL (e.g., https://github.com/HaxeFoundation/hxcpp/archive/refs/tags/4.3.127.zip)'
+      release_page:
+        description: 'GitHub release page URL (e.g., https://github.com/HaxeFoundation/hxcpp/releases/tag/v4.3.127)'
         required: true
       skip_folders:
         description: 'Number of top-level folders to skip inside the ZIP before merging'
@@ -12,7 +12,7 @@ on:
         default: '1'
 
 jobs:
-  download-and-sync:
+  sync-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,16 +21,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download ZIP
+      - name: Download release ZIP
         run: |
-          ZIP_URL="${{ github.event.inputs.release_url }}"
+          RELEASE_PAGE="${{ github.event.inputs.release_page }}"
+          SKIP=${{ github.event.inputs.skip_folders }}
+
+          # Extract repo and tag from URL
+          REPO=$(echo "$RELEASE_PAGE" | awk -F'github.com/' '{print $2}' | awk -F'/releases/tag/' '{print $1}')
+          TAG=$(echo "$RELEASE_PAGE" | awk -F'/releases/tag/' '{print $2}')
+
+          ZIP_URL="https://github.com/$REPO/archive/refs/tags/$TAG.zip"
           ZIP_NAME="source.zip"
-          echo "Downloading release from: $ZIP_URL"
+
+          echo "Downloading source ZIP from $ZIP_URL ..."
           curl -L -o "$ZIP_NAME" "$ZIP_URL"
 
-      - name: Validate ZIP
-        run: |
-          if ! file "source.zip" | grep -q 'Zip archive data'; then
+          if ! file "$ZIP_NAME" | grep -q 'Zip archive data'; then
             echo "ERROR: Downloaded file is not a valid ZIP."
             exit 1
           fi
@@ -40,7 +46,6 @@ jobs:
           mkdir temp_extract
           unzip source.zip -d temp_extract
 
-          SKIP=${{ github.event.inputs.skip_folders }}
           FOLDER="temp_extract"
           for i in $(seq 1 $SKIP); do
             SUBS=$(find "$FOLDER" -mindepth 1 -maxdepth 1 -type d)
@@ -63,5 +68,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Merged release from ${{ github.event.inputs.release_url }}" || echo "No changes"
+          git commit -m "Merged release from ${{ github.event.inputs.release_page }}" || echo "No changes"
           git push
