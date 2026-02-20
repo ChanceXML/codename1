@@ -10,14 +10,10 @@ on:
       website:
         description: 'GitHub repository URL (e.g., https://github.com/username/repo)'
         required: true
-      target_dir:
-        description: 'Target folder to merge source into'
-        required: true
-        default: '.' 
       skip_folders:
-        description: 'Number of top-level folders to skip in the ZIP (auto-detect if left empty)'
+        description: 'Number of top-level folders to skip in the ZIP before merging'
         required: false
-        default: ''
+        default: '0'
 
 jobs:
   download-and-sync:
@@ -33,7 +29,6 @@ jobs:
         run: |
           echo "Tag Version: ${{ github.event.inputs.tag_version }}"
           echo "Website: ${{ github.event.inputs.website }}"
-          echo "Target Directory: ${{ github.event.inputs.target_dir }}"
           echo "Skip Folders: ${{ github.event.inputs.skip_folders }}"
 
       - name: Download Release
@@ -41,7 +36,6 @@ jobs:
           TAG="${{ github.event.inputs.tag_version }}"
           REPO="${{ github.event.inputs.website }}"
           ENCODED_TAG="${TAG// /%20}"
-          REPO_NAME=$(basename -s .git "$REPO")
           URL="$REPO/archive/refs/tags/${ENCODED_TAG}.zip"
           echo "Downloading release from: $URL"
           curl -L -o source.zip "$URL"
@@ -50,33 +44,26 @@ jobs:
         run: |
           mkdir temp_extract
           unzip source.zip -d temp_extract
-          
-          TARGET="${{ github.event.inputs.target_dir }}"
-          mkdir -p "$TARGET"
 
           FOLDER="temp_extract"
           SKIP="${{ github.event.inputs.skip_folders }}"
 
-          if [ -z "$SKIP" ]; then
-              COUNT=$(ls -1 "$FOLDER" | wc -l)
-              if [ "$COUNT" -eq 1 ] && [ -d "$FOLDER/$(ls -1 $FOLDER)" ]; then
-                  FOLDER="$FOLDER/$(ls -1 $FOLDER)"
-                  echo "Only one folder detected, entering: $FOLDER"
-              fi
-          else
-              for i in $(seq 1 $SKIP); do
-                  FOLDER="$FOLDER/$(ls -1 $FOLDER | head -n 1)"
-                  echo "Skipping folder level $i, now inside: $FOLDER"
-              done
+          for i in $(seq 1 $SKIP); do
+              FOLDER="$FOLDER/$(ls -1 $FOLDER | head -n 1)"
+              echo "Skipping folder level $i, now inside: $FOLDER"
+          done
+
+          COUNT=$(ls -1 "$FOLDER" | wc -l)
+          if [ "$COUNT" -gt 3 ]; then
+              echo "More than 3 top-level items detected, merging contents from: $FOLDER"
           fi
 
           if [ -d "$FOLDER/.github" ]; then
               rm -rf "$FOLDER/.github"
-              echo "Removed .github from source to prevent collisions."
           fi
 
           shopt -s dotglob
-          cp -a "$FOLDER"/* "$TARGET"/
+          cp -a "$FOLDER"/* ./
           shopt -u dotglob
 
           rm -rf temp_extract
