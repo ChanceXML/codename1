@@ -32,4 +32,41 @@ jobs:
 
       - name: Validate ZIP
         run: |
-          if ! file "${{ github.event
+          if ! file "${{ github.event.inputs.zip_name }}" | grep -q 'Zip archive data'; then
+            echo "ERROR: Downloaded file is not a valid ZIP."
+            exit 1
+          fi
+
+      - name: Extract ZIP
+        run: |
+          mkdir temp_extract
+          unzip "${{ github.event.inputs.zip_name }}" -d temp_extract
+
+          # Skip folders as requested by the user
+          SKIP=${{ github.event.inputs.skip_folders }}
+          FOLDER="temp_extract"
+          for i in $(seq 1 $SKIP); do
+            SUBS=$(find "$FOLDER" -mindepth 1 -maxdepth 1 -type d)
+            if [ $(echo "$SUBS" | wc -l) -eq 1 ]; then
+              FOLDER="$SUBS"
+            else
+              break
+            fi
+          done
+
+          # Merge into repo root safely
+          shopt -s dotglob
+          cp -a "$FOLDER"/* ./
+          shopt -u dotglob
+
+          # Cleanup
+          rm -rf temp_extract
+          rm "${{ github.event.inputs.zip_name }}"
+
+      - name: Commit & Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Merged release from ${{ github.event.inputs.release_url }}" || echo "No changes"
+          git push
