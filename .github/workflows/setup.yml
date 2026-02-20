@@ -8,7 +8,7 @@ on:
         required: true
         default: 'v1.0.1'
       website:
-        description: 'Website URL (user-defined)'
+        description: 'GitHub repository URL (e.g., https://github.com/username/repo)'
         required: true
       target_dir:
         description: 'Target folder to merge source into'
@@ -39,11 +39,14 @@ jobs:
       - name: Download Release
         run: |
           TAG="${{ github.event.inputs.tag_version }}"
-          URL="https://github.com/CodenameCrew/CodenameEngine/archive/refs/tags/${TAG}.zip"
+          REPO="${{ github.event.inputs.website }}"
+          ENCODED_TAG="${TAG// /%20}"
+          REPO_NAME=$(basename -s .git "$REPO")
+          URL="$REPO/archive/refs/tags/${ENCODED_TAG}.zip"
           echo "Downloading release from: $URL"
           curl -L -o source.zip "$URL"
 
-      - name: Extract and Merge (Flexible)
+      - name: Extract and Merge
         run: |
           mkdir temp_extract
           unzip source.zip -d temp_extract
