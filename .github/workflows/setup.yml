@@ -10,9 +10,13 @@ on:
       website:
         description: 'GitHub repository URL (e.g., https://github.com/username/repo)'
         required: true
-      folder_name:
-        description: 'Name of the folder inside the ZIP to merge'
+      zip_name:
+        description: 'Name of the ZIP file to download (e.g., CodenameEngine-v1.0.1.zip)'
         required: true
+      expected_items:
+        description: 'Expected number of top-level items in the extracted folder before merging'
+        required: false
+        default: '3'
 
 jobs:
   download-and-sync:
@@ -28,28 +32,37 @@ jobs:
         run: |
           echo "Tag Version: ${{ github.event.inputs.tag_version }}"
           echo "Website: ${{ github.event.inputs.website }}"
-          echo "Folder Name: ${{ github.event.inputs.folder_name }}"
+          echo "ZIP Name: ${{ github.event.inputs.zip_name }}"
+          echo "Expected Items: ${{ github.event.inputs.expected_items }}"
 
-      - name: Download Release
+      - name: Download ZIP
         run: |
           TAG="${{ github.event.inputs.tag_version }}"
           REPO="${{ github.event.inputs.website }}"
+          ZIP="${{ github.event.inputs.zip_name }}"
           ENCODED_TAG="${TAG// /%20}"
           URL="$REPO/archive/refs/tags/${ENCODED_TAG}.zip"
-          echo "Downloading release from: $URL"
-          curl -L -o source.zip "$URL"
+          echo "Downloading release from: $URL as $ZIP"
+          curl -L -o "$ZIP" "$URL"
 
       - name: Extract and Merge
         run: |
           mkdir temp_extract
-          unzip source.zip -d temp_extract
+          unzip "${{ github.event.inputs.zip_name }}" -d temp_extract
 
-          FOLDER="temp_extract/${{ github.event.inputs.folder_name }}"
+          FOLDER="temp_extract"
+          EXPECTED="${{ github.event.inputs.expected_items }}"
 
-          if [ ! -d "$FOLDER" ]; then
-              echo "Error: Folder '$FOLDER' does not exist inside the ZIP"
-              exit 1
-          fi
+          while true; do
+              COUNT=$(ls -1 "$FOLDER" | wc -l)
+              if [ "$COUNT" -lt "$EXPECTED" ]; then
+                  FOLDER="$FOLDER/$(ls -1 $FOLDER | head -n 1)"
+                  echo "Folder has fewer items than expected ($COUNT < $EXPECTED), going inside: $FOLDER"
+              else
+                  echo "Folder has enough items ($COUNT >= $EXPECTED), merging from: $FOLDER"
+                  break
+              fi
+          done
 
           if [ -d "$FOLDER/.github" ]; then
               rm -rf "$FOLDER/.github"
@@ -60,7 +73,7 @@ jobs:
           shopt -u dotglob
 
           rm -rf temp_extract
-          rm source.zip
+          rm "${{ github.event.inputs.zip_name }}"
 
       - name: Commit and Push
         run: |
