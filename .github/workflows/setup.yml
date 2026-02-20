@@ -10,10 +10,9 @@ on:
       website:
         description: 'GitHub repository URL (e.g., https://github.com/username/repo)'
         required: true
-      skip_folders:
-        description: 'Number of top-level folders to skip in the ZIP before merging'
-        required: false
-        default: '0'
+      folder_name:
+        description: 'Name of the folder inside the ZIP to merge'
+        required: true
 
 jobs:
   download-and-sync:
@@ -29,7 +28,7 @@ jobs:
         run: |
           echo "Tag Version: ${{ github.event.inputs.tag_version }}"
           echo "Website: ${{ github.event.inputs.website }}"
-          echo "Skip Folders: ${{ github.event.inputs.skip_folders }}"
+          echo "Folder Name: ${{ github.event.inputs.folder_name }}"
 
       - name: Download Release
         run: |
@@ -45,17 +44,11 @@ jobs:
           mkdir temp_extract
           unzip source.zip -d temp_extract
 
-          FOLDER="temp_extract"
-          SKIP="${{ github.event.inputs.skip_folders }}"
+          FOLDER="temp_extract/${{ github.event.inputs.folder_name }}"
 
-          for i in $(seq 1 $SKIP); do
-              FOLDER="$FOLDER/$(ls -1 $FOLDER | head -n 1)"
-              echo "Skipping folder level $i, now inside: $FOLDER"
-          done
-
-          COUNT=$(ls -1 "$FOLDER" | wc -l)
-          if [ "$COUNT" -gt 3 ]; then
-              echo "More than 3 top-level items detected, merging contents from: $FOLDER"
+          if [ ! -d "$FOLDER" ]; then
+              echo "Error: Folder '$FOLDER' does not exist inside the ZIP"
+              exit 1
           fi
 
           if [ -d "$FOLDER/.github" ]; then
